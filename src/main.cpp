@@ -80,9 +80,14 @@ auto main([[maybe_unused]] int argc, [[maybe_unused]] char const* argv[]) -> int
 	std::clog << "Allocator has " << count_blocks() << " blocks" << std::endl;
 	for ([[maybe_unused]] auto i : repeat(10)) {
 		uint32_t* x = a.allocate(1);
-		*x          = -1;
-		std::clog << "Allocator has " << count_blocks() << " blocks and " << i + 1 << " elements" << std::endl;
+		*x          = static_cast<uint32_t>(-1);
+		std::clog << "Allocator has " << count_blocks() << " blocks and " << 1 << " elements" << std::endl;
 		a.deallocate(x, 1);
+	}
+	for ([[maybe_unused]] auto i : repeat(10)) {
+		uint32_t* x = a.allocate(1);
+		*x          = static_cast<uint32_t>(-1);
+		std::clog << "Allocator has " << count_blocks() << " blocks and " << i + 1 << " elements" << std::endl;
 	}
 
 	compilable<std::allocator, int>();

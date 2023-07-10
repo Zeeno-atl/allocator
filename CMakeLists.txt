@@ -15,7 +15,11 @@ set(CMAKE_EXPERIMENTAL_CXX_MODULE_CMAKE_API 2182bf5c-ef0d-489a-91da-49dbc3090d2a
 set(CMAKE_EXPERIMENTAL_CXX_MODULE_DYNDEP 1)
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    add_compile_options(-Wall -Wextra -pedantic)
+    if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        add_compile_options(-Wall -Wextra -pedantic -Werror -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-function)
+    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+        add_compile_options(/W4)
+    endif()
     set(CMAKE_LINK_WHAT_YOU_USE ON)
 endif()
 
@@ -34,7 +38,7 @@ target_sources(${PROJECT_NAME}
     ${modules}
 )
 
-# enable modules on GCC only
+# enable modules on GCC only as Clang and MSVC have it enabled by default
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     target_compile_options(${PROJECT_NAME} PRIVATE -fmodules-ts -stdlib=libstdc++)
     target_link_options(${PROJECT_NAME} PRIVATE -fmodules-ts -stdlib=libstdc++)
@@ -44,8 +48,13 @@ endif()
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     target_link_options(${PROJECT_NAME} PRIVATE)
 else()
-    target_compile_options(${PROJECT_NAME} PRIVATE -fsanitize=address -fsanitize=leak)
-    target_link_options(${PROJECT_NAME} PRIVATE -fsanitize=address -fsanitize=leak)
+    if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        target_compile_options(${PROJECT_NAME} PRIVATE -fno-omit-frame-pointer -fsanitize=address -fsanitize=leak)
+        target_link_options(${PROJECT_NAME} PRIVATE -fno-omit-frame-pointer -fsanitize=address -fsanitize=leak)
+    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+        target_compile_options(${PROJECT_NAME} PRIVATE /fsanitize=address /analyze /analyze:external-)
+        target_link_options(${PROJECT_NAME} PRIVATE /fsanitize=address /analyze /analyze:external-)
+    endif()
 endif()
 
 find_package(range-v3 CONFIG REQUIRED)

@@ -31,7 +31,7 @@ struct Mallocator {
 		throw std::bad_alloc();
 	}
 
-	void deallocate(T* p, std::size_t n) noexcept {
+	void deallocate(T* p, [[maybe_unused]] std::size_t n) noexcept {
 		std::free(p);
 	}
 };
