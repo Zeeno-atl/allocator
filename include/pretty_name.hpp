@@ -1,4 +1,4 @@
-module;
+#pragma once
 
 /**
  * @file pretty_name.hpp
@@ -17,8 +17,6 @@ module;
 #include <string>
 #include <tuple>
 #include <vector>
-
-export module pretty_name;
 
 class static_string {
 	const char* const p_;
@@ -77,7 +75,7 @@ constexpr static_string type_name() {
 #endif
 }
 
-export namespace pretty_name {
+namespace pretty_name {
 template<class T>
 std::string pretty_name() {
 	return static_to_string(type_name<T>());

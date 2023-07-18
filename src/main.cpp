@@ -11,8 +11,8 @@
 #include <unordered_set>
 #include <vector>
 
-import allocator;
-import pretty_name;
+#include "allocator.hpp"
+#include "pretty_name.hpp"
 
 auto repeat(int n) {
 	return ranges::iota_view(0, n);
@@ -35,18 +35,18 @@ void testAllocator(T& alloc) {
 template<template<typename> typename Alloc, typename T>
 void compilable() {
 	// Check if the allocator works
-	std::vector<T, Alloc<T>>                                   v;
-	std::map<T, T, std::less<T>, Alloc<std::pair<const T, T>>> m;
-	std::set<T, std::less<T>, Alloc<T>>                        s;
-	//	std::unordered_map<T, T, std::hash<T>, std::equal_to<T>, Alloc<std::pair<const T, T>>>      um;
-	//	std::unordered_set<T, std::hash<T>, std::equal_to<T>, Alloc<T>>                             us;
-	std::multimap<T, T, std::less<T>, Alloc<std::pair<const T, T>>> mm;
-	std::multiset<T, std::less<T>, Alloc<T>>                        ms;
-	//	std::unordered_multimap<T, T, std::hash<T>, std::equal_to<T>, Alloc<std::pair<const T, T>>> umm;
-	//	std::unordered_multiset<T, std::hash<T>, std::equal_to<T>, Alloc<T>>                        ums;
-	//	std::deque<T, Alloc<T>>        d;
-	std::list<T, Alloc<T>>         l;
-	std::forward_list<T, Alloc<T>> fl;
+	std::vector<T, Alloc<T>>                                                                    v;
+	std::map<T, T, std::less<T>, Alloc<std::pair<const T, T>>>                                  m;
+	std::set<T, std::less<T>, Alloc<T>>                                                         s;
+	std::unordered_map<T, T, std::hash<T>, std::equal_to<T>, Alloc<std::pair<const T, T>>>      um;
+	std::unordered_set<T, std::hash<T>, std::equal_to<T>, Alloc<T>>                             us;
+	std::multimap<T, T, std::less<T>, Alloc<std::pair<const T, T>>>                             mm;
+	std::multiset<T, std::less<T>, Alloc<T>>                                                    ms;
+	std::unordered_multimap<T, T, std::hash<T>, std::equal_to<T>, Alloc<std::pair<const T, T>>> umm;
+	std::unordered_multiset<T, std::hash<T>, std::equal_to<T>, Alloc<T>>                        ums;
+	std::deque<T, Alloc<T>>                                                                     d;
+	std::list<T, Alloc<T>>                                                                      l;
+	std::forward_list<T, Alloc<T>>                                                              fl;
 }
 
 template<typename Alloc>
@@ -65,38 +65,45 @@ void repeatedTest(std::function<std::shared_ptr<Alloc>()> f) {
 }
 
 auto main([[maybe_unused]] int argc, [[maybe_unused]] char const* argv[]) -> int {
-	allocator::static_size_allocator<uint32_t> a{32};
-	std::clog << "Allocator element size is " << a.ELEM_SIZE << std::endl;
-	std::clog << "Allocator block size is " << a._blockSize << std::endl;
-	auto count_blocks = [&a] {
-		auto block = a._firstBlock;
-		auto count = 0;
-		for (; block; ++count) {
-			block = block->_nextBlock;
-		}
-		return count;
-	};
-
-	std::clog << "Allocator has " << count_blocks() << " blocks" << std::endl;
-	for ([[maybe_unused]] auto i : repeat(10)) {
-		uint32_t* x = a.allocate(1);
-		*x          = static_cast<uint32_t>(-1);
-		std::clog << "Allocator has " << count_blocks() << " blocks and " << 1 << " elements" << std::endl;
-		a.deallocate(x, 1);
+	{
+		allocator::universal_allocator a;
+		auto                           shared_int{a.allocate_shared<int>(1)};
+		auto                           shared_double{a.allocate_shared<double>(2.0)};
+		auto                           shared_longdouble{a.allocate_shared<long double>(3.0L)};
+		std::cout << *shared_int << std::endl;
+		std::cout << *shared_double << std::endl;
+		std::cout << *shared_longdouble << std::endl;
 	}
-	for ([[maybe_unused]] auto i : repeat(10)) {
-		uint32_t* x = a.allocate(1);
-		*x          = static_cast<uint32_t>(-1);
-		std::clog << "Allocator has " << count_blocks() << " blocks and " << i + 1 << " elements" << std::endl;
-	}
-
 	compilable<std::allocator, int>();
 	repeatedTest<std::allocator<int>>([] { return std::make_shared<std::allocator<int>>(); });
 
-	compilable<allocator::Mallocator, int>();
-	repeatedTest<allocator::Mallocator<int>>([] { return std::make_shared<allocator::Mallocator<int>>(); });
+	compilable<allocator::mallocator, int>();
+	repeatedTest<allocator::mallocator<int>>([] { return std::make_shared<allocator::mallocator<int>>(); });
 
-	compilable<allocator::static_size_allocator, int>();
-	repeatedTest<allocator::static_size_allocator<int>>([] { return std::make_shared<allocator::static_size_allocator<int>>(); });
+	repeatedTest<allocator::universal_allocator<int>>([] { return std::make_shared<allocator::universal_allocator<int>>(); });
+	{
+		using T = int;
+
+		std::vector<T, allocator::universal_allocator<T>>                                                                    v;
+		std::map<T, T, std::less<T>, allocator::universal_allocator<std::pair<const T, T>>>                                  m;
+		std::set<T, std::less<T>, allocator::universal_allocator<T>>                                                         s;
+		std::unordered_map<T, T, std::hash<T>, std::equal_to<T>, allocator::universal_allocator<std::pair<const T, T>>>      um;
+		std::unordered_set<T, std::hash<T>, std::equal_to<T>, allocator::universal_allocator<T>>                             us;
+		std::multimap<T, T, std::less<T>, allocator::universal_allocator<std::pair<const T, T>>>                             mm;
+		std::multiset<T, std::less<T>, allocator::universal_allocator<T>>                                                    ms;
+		std::unordered_multimap<T, T, std::hash<T>, std::equal_to<T>, allocator::universal_allocator<std::pair<const T, T>>> umm;
+		std::unordered_multiset<T, std::hash<T>, std::equal_to<T>, allocator::universal_allocator<T>>                        ums;
+		// libstdc++ allocates multiple on constructor		std::deque<T, allocator::universal_allocator<T>>                                                                     d;
+		std::list<T, allocator::universal_allocator<T>>         l;
+		std::forward_list<T, allocator::universal_allocator<T>> fl;
+	}
+
+	using better_universal_allocator = allocator::universal_allocator<int, 6, 4 * 1024 * 1024, allocator::mallocator>;
+	repeatedTest<better_universal_allocator>([] { return std::make_shared<better_universal_allocator>(); });
+
+	repeatedTest<allocator::block_allocator_adaptor<int>>([] { return std::make_shared<allocator::block_allocator_adaptor<int>>(); });
+
+	using better_block_allocator = allocator::block_allocator_adaptor<int, 4 * 1024 * 1024, allocator::mallocator>;
+	repeatedTest<better_block_allocator>([] { return std::make_shared<better_block_allocator>(); });
 	return EXIT_SUCCESS;
 }

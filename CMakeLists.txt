@@ -10,13 +10,10 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-set(CMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES ${CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES})
-set(CMAKE_EXPERIMENTAL_CXX_MODULE_CMAKE_API 2182bf5c-ef0d-489a-91da-49dbc3090d2a)
-set(CMAKE_EXPERIMENTAL_CXX_MODULE_DYNDEP 1)
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-        add_compile_options(-Wall -Wextra -pedantic -Werror -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-function)
+        add_compile_options(-Wall -Wextra -pedantic -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-function)
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
         add_compile_options(/W4)
     endif()
@@ -26,22 +23,16 @@ endif()
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
 
 file(GLOB_RECURSE sources "${CMAKE_SOURCE_DIR}/src/*.cpp" "${CMAKE_SOURCE_DIR}/modules/*.cpp") 
-file(GLOB_RECURSE modules "${CMAKE_SOURCE_DIR}/modules/*.cppm") 
 
 add_executable(${PROJECT_NAME})
 target_include_directories(${PROJECT_NAME} PRIVATE "include")
 target_sources(${PROJECT_NAME}
     PRIVATE ${sources}
 )
-target_sources(${PROJECT_NAME}
-    PUBLIC FILE_SET all_my_modules TYPE CXX_MODULES FILES
-    ${modules}
-)
 
-# enable modules on GCC only as Clang and MSVC have it enabled by default
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    target_compile_options(${PROJECT_NAME} PRIVATE -fmodules-ts -stdlib=libstdc++)
-    target_link_options(${PROJECT_NAME} PRIVATE -fmodules-ts -stdlib=libstdc++)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    target_compile_options(${PROJECT_NAME} PRIVATE -stdlib=libc++)
+    target_link_options(${PROJECT_NAME} PRIVATE -stdlib=libc++)
 endif()
 
 # static link for the release build
