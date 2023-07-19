@@ -83,17 +83,23 @@ auto main([[maybe_unused]] int argc, [[maybe_unused]] char const* argv[]) -> int
 	repeatedTest<allocator::universal_allocator<int>>([] { return std::make_shared<allocator::universal_allocator<int>>(); });
 	{
 		using T = int;
-
+ 
 		std::vector<T, allocator::universal_allocator<T>>                                                                    v;
 		std::map<T, T, std::less<T>, allocator::universal_allocator<std::pair<const T, T>>>                                  m;
 		std::set<T, std::less<T>, allocator::universal_allocator<T>>                                                         s;
+#ifndef _MSC_VER
 		std::unordered_map<T, T, std::hash<T>, std::equal_to<T>, allocator::universal_allocator<std::pair<const T, T>>>      um;
 		std::unordered_set<T, std::hash<T>, std::equal_to<T>, allocator::universal_allocator<T>>                             us;
+#endif
 		std::multimap<T, T, std::less<T>, allocator::universal_allocator<std::pair<const T, T>>>                             mm;
 		std::multiset<T, std::less<T>, allocator::universal_allocator<T>>                                                    ms;
+#ifndef _MSC_VER
 		std::unordered_multimap<T, T, std::hash<T>, std::equal_to<T>, allocator::universal_allocator<std::pair<const T, T>>> umm;
 		std::unordered_multiset<T, std::hash<T>, std::equal_to<T>, allocator::universal_allocator<T>>                        ums;
-		// libstdc++ allocates multiple on constructor		std::deque<T, allocator::universal_allocator<T>>                                                                     d;
+#endif
+#ifndef __GLIBCXX__
+		std::deque<T, allocator::universal_allocator<T>>                                                                     d;
+#endif
 		std::list<T, allocator::universal_allocator<T>>         l;
 		std::forward_list<T, allocator::universal_allocator<T>> fl;
 	}
