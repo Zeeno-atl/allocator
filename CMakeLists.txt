@@ -22,6 +22,27 @@ endif()
 
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
 
+# clang-tidy
+find_program(CLANG_TIDY NAMES "clang-tidy-17" "clang-tidy-16" "clang-tidy-15" "clang-tidy-14" "clang-tidy-13" "clang-tidy" REQUIRED)
+if(NOT CLANG_TIDY_NOT_FOUND)
+    message(STATUS "Clang-tidy found at ${CLANG_TIDY}")
+    set(CMAKE_CXX_CLANG_TIDY ${CLANG_TIDY}
+        --format-style=file
+        --checks=-*,modernize-*,bugprone-*,clang-analyzer-*,cppcoreguidelines-*,performance-*,portability-*,readibility-*,-cppcoreguidelines-owning-memory,-cppcoreguidelines-pro-type-reinterpret-cast,-cppcoreguidelines-pro-bounds-pointer-arithmetic,-cppcoreguidelines-no-malloc,-cppcoreguidelines-avoid-magic-numbers,-bugprone-sizeof-expression
+        --header-filter=allocator\.hpp
+    )
+endif()
+
+# cppcheck
+find_program(CPPCHECK NAMES "cppcheck" REQUIRED)
+if(NOT CPPCHECK_NOT_FOUND)
+    message(STATUS "cppcheck found at ${CPPCHECK}")
+    set(CMAKE_CXX_CPPCHECK ${CPPCHECK}
+        --enable=all
+        -D__cppcheck__
+    )
+endif()
+
 file(GLOB_RECURSE sources "${CMAKE_SOURCE_DIR}/src/*.cpp" "${CMAKE_SOURCE_DIR}/modules/*.cpp") 
 
 add_executable(${PROJECT_NAME})

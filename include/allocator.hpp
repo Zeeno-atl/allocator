@@ -18,10 +18,10 @@ struct mallocator {
 	mallocator() = default;
 
 	template<class U>
-	constexpr mallocator(const mallocator<U>&) noexcept {
+	constexpr explicit mallocator(const mallocator<U>&) noexcept {
 	}
 
-	[[nodiscard]] T* allocate(std::size_t n) {
+	[[nodiscard]] auto allocate(std::size_t n) -> T* {
 		if (n > std::numeric_limits<std::size_t>::max() / sizeof(T))
 			throw std::bad_array_new_length();
 
@@ -38,12 +38,12 @@ struct mallocator {
 };
 
 template<class T, class U>
-bool operator==(const mallocator<T>&, const mallocator<U>&) {
+auto operator==(const mallocator<T>&, const mallocator<U>&) -> bool {
 	return true;
 }
 
 template<class T, class U>
-bool operator!=(const mallocator<T>&, const mallocator<U>&) {
+auto operator!=(const mallocator<T>&, const mallocator<U>&) -> bool {
 	return false;
 }
 
@@ -60,7 +60,7 @@ struct block_allocator_adaptor_block {
 	block_allocator_adaptor_block* _nextBlock{nullptr};
 	alloc_type                     _alloc{};
 
-	block_allocator_adaptor_block(alloc_type alloc) : _alloc{alloc} {
+	explicit block_allocator_adaptor_block(alloc_type alloc) : _alloc{alloc} {
 		_data = std::allocator_traits<alloc_type>::allocate(_alloc, BLOCK_SIZE);
 
 		std::size_t i{0};
@@ -71,12 +71,12 @@ struct block_allocator_adaptor_block {
 		_free                                            = _data;
 	}
 
-	block_allocator_adaptor_block(const block_allocator_adaptor_block&)            = delete;
-	block_allocator_adaptor_block& operator=(const block_allocator_adaptor_block&) = delete;
-	block_allocator_adaptor_block(block_allocator_adaptor_block&&)                 = default;
-	block_allocator_adaptor_block& operator=(block_allocator_adaptor_block&&)      = default;
+	block_allocator_adaptor_block(const block_allocator_adaptor_block&)                    = delete;
+	auto operator=(const block_allocator_adaptor_block&) -> block_allocator_adaptor_block& = delete;
+	block_allocator_adaptor_block(block_allocator_adaptor_block&&)                         = default;
+	auto operator=(block_allocator_adaptor_block&&) -> block_allocator_adaptor_block&      = default;
 
-	void* take() {
+	auto take() -> void* {
 		if (_free == nullptr) {
 			return nullptr;
 		}
@@ -85,7 +85,7 @@ struct block_allocator_adaptor_block {
 		return p;
 	}
 
-	bool give(void* p) {
+	auto give(void* p) -> bool {
 		if (p < _data || p >= _data + BLOCK_SIZE) {
 			return false;
 		}
@@ -122,14 +122,18 @@ struct block_allocator_adaptor {
 	block_allocator_adaptor(const block_allocator_adaptor&) = default;
 	block_allocator_adaptor(block_allocator_adaptor&&)      = default;
 
-	block_allocator_adaptor& operator=(const block_allocator_adaptor& other) {
+	auto operator=(const block_allocator_adaptor& other) -> block_allocator_adaptor& {
+		if (&other == this) {
+			return *this;
+		}
+
 		deallocateAll();
 		_controlBlock      = other._controlBlock;
 		_controlBlockAlloc = other._controlBlockAlloc;
 		return *this;
 	}
 
-	block_allocator_adaptor& operator=(block_allocator_adaptor&& other) {
+	auto operator=(block_allocator_adaptor&& other) noexcept -> block_allocator_adaptor& {
 		deallocateAll();
 		std::swap(_controlBlock, other._controlBlock);
 		std::swap(_controlBlockAlloc, other._controlBlockAlloc);
@@ -140,19 +144,17 @@ struct block_allocator_adaptor {
 		deallocateAll();
 	}
 
-	[[nodiscard]] T* allocate(std::size_t n) {
+	[[nodiscard]] auto allocate(std::size_t n) -> T* {
 		if (n - 1) {
 			throw std::bad_array_new_length();
 		}
 
 		Block* block{_controlBlock->_firstBlock};
-		Block* lastBlock{nullptr};
 		while (block) {
 			if (auto p = static_cast<T*>(block->take())) {
 				return p;
 			}
-			lastBlock = block;
-			block     = block->_nextBlock;
+			block = block->_nextBlock;
 		}
 
 		auto newBlock = std::allocator_traits<alloc_type>::allocate(_controlBlock->_alloc, 1);
@@ -199,12 +201,12 @@ private:
 };
 
 template<typename T, typename U>
-bool operator==(const block_allocator_adaptor<T>&, const block_allocator_adaptor<U>&) {
+auto operator==(const block_allocator_adaptor<T>&, const block_allocator_adaptor<U>&) -> bool {
 	return false;
 }
 
 template<typename T, typename U>
-bool operator!=(const block_allocator_adaptor<T>&, const block_allocator_adaptor<U>&) {
+auto operator!=(const block_allocator_adaptor<T>&, const block_allocator_adaptor<U>&) -> bool {
 	return true;
 }
 
@@ -229,20 +231,19 @@ struct universal_allocator {
 
 	//template<size_t
 
-	universal_allocator() {
-		_alloc = std::make_shared<allocator_tuple_type>();
+	universal_allocator() : _alloc(std::make_shared<allocator_tuple_type>()) {
 	}
 
 	template<typename U = void>
-	universal_allocator(const universal_allocator<U, SUBALLOCATORS>& other) : _alloc{*reinterpret_cast<const decltype(_alloc)*>(&other._alloc)} {
+	explicit universal_allocator(const universal_allocator<U, SUBALLOCATORS>& other) : _alloc{*reinterpret_cast<const decltype(_alloc)*>(&other._alloc)} {
 	}
 
 	template<typename U, typename... Args>
-	std::shared_ptr<U> allocate_shared(Args&&... args) {
+	auto allocate_shared(Args&&... args) -> std::shared_ptr<U> {
 		return std::allocate_shared<U>(*this, std::forward<Args>(args)...);
 	}
 
-	[[nodiscard]] value_type* allocate(std::size_t n) {
+	[[nodiscard]] auto allocate(std::size_t n) -> value_type* {
 		return allocator<value_type>().allocate(n);
 	}
 
@@ -257,25 +258,25 @@ private:
 		static_assert(sizeof(_data) == ObjectSize, "Filler size is not correct");
 	};
 
-	static constexpr std::size_t cellSize(std::size_t bytes) {
+	static constexpr auto cellSize(std::size_t bytes) -> std::size_t {
 		return std::max(std::bit_ceil(bytes), sizeof(void*));
 	}
 
 	template<typename U>
-	static constexpr std::size_t cellSize() {
+	static constexpr auto cellSize() -> std::size_t {
 		return cellSize(sizeof(U));
 	}
 
-	static constexpr std::size_t posFromSize(std::size_t size) {
+	static constexpr auto posFromSize(std::size_t size) -> std::size_t {
 		return std::bit_width(cellSize(size)) - std::bit_width(cellSize(0));
 	}
 
 	template<typename U>
-	static constexpr std::size_t posForType() {
+	static constexpr auto posForType() -> std::size_t {
 		return posFromSize(sizeof(U));
 	}
 
-	static constexpr std::size_t blockSizeForCellSize(std::size_t size) {
+	static constexpr auto blockSizeForCellSize(std::size_t size) -> std::size_t {
 		constexpr std::size_t minElements{1024};
 		const std::size_t     elements{std::max(BLOCK_SIZE / size, minElements)};
 		return elements * size;
@@ -285,7 +286,7 @@ private:
 	using filler_allocator_type = block_allocator_adaptor<Filler<cellSize(sizeof(U))>, BLOCK_SIZE, Alloc>;
 
 	template<typename U>
-	block_allocator_adaptor<U, BLOCK_SIZE, Alloc>& allocator() {
+	auto allocator() -> block_allocator_adaptor<U, BLOCK_SIZE, Alloc>& {
 		static_assert(posForType<U>() < SUBALLOCATORS, "type too big for a allocator");
 		return *reinterpret_cast<block_allocator_adaptor<U, BLOCK_SIZE, Alloc>*>(&std::get<posForType<U>()>(*_alloc));
 	}
@@ -302,12 +303,12 @@ private:
 };
 
 template<typename T, typename U, std::size_t SUBALLOCATORS>
-bool operator==(const universal_allocator<T, SUBALLOCATORS>& a, const universal_allocator<U, SUBALLOCATORS>& b) {
+auto operator==(const universal_allocator<T, SUBALLOCATORS>& a, const universal_allocator<U, SUBALLOCATORS>& b) -> bool {
 	return a._allocators == b._allocators;
 }
 
 template<typename T, typename U, std::size_t SUBALLOCATORS>
-bool operator!=(const universal_allocator<T, SUBALLOCATORS>& a, const universal_allocator<U, SUBALLOCATORS>& b) {
+auto operator!=(const universal_allocator<T, SUBALLOCATORS>& a, const universal_allocator<U, SUBALLOCATORS>& b) -> bool {
 	return a._allocators != b._allocators;
 }
 
