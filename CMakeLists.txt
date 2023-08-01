@@ -70,8 +70,10 @@ else()
 endif()
 
 find_package(range-v3 CONFIG REQUIRED)
+find_package(mio      CONFIG REQUIRED)
 
 target_link_libraries(${PROJECT_NAME}
 PRIVATE
     range-v3::range-v3 
+    mio::mio
 )
