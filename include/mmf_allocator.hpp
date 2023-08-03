@@ -47,16 +47,15 @@ struct mmf_allocator {
 			throw std::bad_array_new_length{};
 		}
 
-		std::array<char, 20> buffer{0};
-		const auto           result = std::to_chars(buffer.begin(), buffer.end(), _p->_nextId++);
-		if (result.ec != std::errc{}) {
-			throw std::bad_alloc{};
-		}
-
 		std::filesystem::path filename;
 		if (_p->_directory.empty()) {
 			filename = std::tmpnam(nullptr);
 		} else {
+			std::array<char, 20> buffer{0};
+			const auto           result = std::to_chars(buffer.begin(), buffer.end(), _p->_nextId++);
+			if (result.ec != std::errc{}) {
+				throw std::bad_alloc{};
+			}
 			filename = _p->_directory / std::string_view{buffer.data(), static_cast<std::size_t>(result.ptr - buffer.data())};
 		}
 		allocate_file(filename, n * sizeof(value_type));
@@ -75,13 +74,19 @@ struct mmf_allocator {
 	}
 
 	void deallocate(value_type* p, [[maybe_unused]] std::size_t n) noexcept {
+		auto it = _p->_mappings.find(p);
+		if (it == _p->_mappings.end()) {
+			return;
+		}
+		it->second.mapping.unmap();
+		std::filesystem::remove(it->second.filename);
 		_p->_mappings.erase(p);
 	}
 
 private:
 	static void allocate_file(const std::filesystem::path& filename, std::size_t size) {
 		std::ofstream ofs{filename, std::ios::binary | std::ios::out};
-		ofs.seekp(static_cast<std::streampos>(size - 1));
+		ofs.seekp(static_cast<std::streamoff>(size - 1));
 		ofs.put(0);
 	}
 
@@ -98,6 +103,7 @@ private:
 		auto operator=(MappingItem&&) noexcept -> MappingItem& = default;
 		~MappingItem()                                         = default;
 	};
+
 	struct ControlBlock {
 		std::atomic_uint_least32_t                   _nextId{0};
 		std::filesystem::path                        _directory;
@@ -115,16 +121,12 @@ private:
 		auto operator=(ControlBlock&&) -> ControlBlock&      = delete;
 
 		~ControlBlock() {
+			for (auto& [_, item] : _mappings) {
+				item.mapping.unmap();
+				std::filesystem::remove(item.filename);
+			}
 			if (!_directory.empty()) {
 				std::filesystem::remove_all(_directory);
-			} else {
-				for (auto& [_, value] : _mappings) {
-					auto            filename{value.filename};
-					std::error_code error;
-					value.mapping.sync(error);
-					value.mapping.unmap();
-					std::filesystem::remove(filename);
-				}
 			}
 		}
 	};

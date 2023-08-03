@@ -16,22 +16,23 @@ namespace allocator {
 	until it reaches the number of blocks specified in the template parameter.
 */
 template<typename T = std::byte, std::size_t SUBALLOCATORS = 6, std::size_t BLOCK_SIZE = 4 * 1024 * 1024, template<typename...> typename Alloc = std::allocator>
-struct universal_allocator {
+struct universal_block_adaptor {
 	template<typename, std::size_t, std::size_t, template<typename...> typename>
-	friend struct universal_allocator;
+	friend struct universal_block_adaptor;
 
 	using value_type = T;
 
 	template<typename U>
 	struct rebind {
-		using other = universal_allocator<U, SUBALLOCATORS>;
+		using other = universal_block_adaptor<U, SUBALLOCATORS>;
 	};
 
-	universal_allocator() : _alloc{std::make_shared<allocator_tuple_type>()} {
+	universal_block_adaptor() : _alloc{std::make_shared<allocator_tuple_type>()} {
 	}
 
 	template<typename U = void>
-	explicit universal_allocator(const universal_allocator<U, SUBALLOCATORS>& other) : _alloc{*reinterpret_cast<const decltype(_alloc)*>(&other._alloc)} {
+	explicit universal_block_adaptor(const universal_block_adaptor<U, SUBALLOCATORS>& other)
+	    : _alloc{*reinterpret_cast<const decltype(_alloc)*>(&other._alloc)} {
 	}
 
 	template<typename U, typename... Args>
@@ -79,17 +80,17 @@ private:
 	}
 
 	template<typename U>
-	using filler_allocator_type = block_allocator_adaptor<Filler<cellSize(sizeof(U))>, BLOCK_SIZE, Alloc>;
+	using filler_allocator_type = block_adaptor<Filler<cellSize(sizeof(U))>, BLOCK_SIZE, Alloc>;
 
 	template<typename U>
-	auto allocator() -> block_allocator_adaptor<U, BLOCK_SIZE, Alloc>& {
+	auto allocator() -> block_adaptor<U, BLOCK_SIZE, Alloc>& {
 		static_assert(posForType<U>() < SUBALLOCATORS, "type too big for a allocator");
-		return *reinterpret_cast<block_allocator_adaptor<U, BLOCK_SIZE, Alloc>*>(&std::get<posForType<U>()>(*_alloc));
+		return *reinterpret_cast<block_adaptor<U, BLOCK_SIZE, Alloc>*>(&std::get<posForType<U>()>(*_alloc));
 	}
 
 	template<std::size_t... Index>
 	static auto helper(std::index_sequence<Index...>) {
-		return std::tuple<block_allocator_adaptor<Filler<cellSize(1 << (std::bit_width(sizeof(void*)) + Index - 1))>, BLOCK_SIZE, Alloc>...>{};
+		return std::tuple<block_adaptor<Filler<cellSize(1 << (std::bit_width(sizeof(void*)) + Index - 1))>, BLOCK_SIZE, Alloc>...>{};
 	}
 
 	using allocator_tuple_type = decltype(helper(std::make_index_sequence<SUBALLOCATORS>{}));
@@ -99,12 +100,12 @@ private:
 };
 
 template<typename T, typename U, std::size_t SUBALLOCATORS>
-auto operator==(const universal_allocator<T, SUBALLOCATORS>& a, const universal_allocator<U, SUBALLOCATORS>& b) -> bool {
+auto operator==(const universal_block_adaptor<T, SUBALLOCATORS>& a, const universal_block_adaptor<U, SUBALLOCATORS>& b) -> bool {
 	return a._alloc == b._alloc;
 }
 
 template<typename T, typename U, std::size_t SUBALLOCATORS>
-auto operator!=(const universal_allocator<T, SUBALLOCATORS>& a, const universal_allocator<U, SUBALLOCATORS>& b) -> bool {
+auto operator!=(const universal_block_adaptor<T, SUBALLOCATORS>& a, const universal_block_adaptor<U, SUBALLOCATORS>& b) -> bool {
 	return a._alloc != b._alloc;
 }
 

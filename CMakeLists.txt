@@ -13,7 +13,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-        add_compile_options(-Wall -Wextra -pedantic -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-function)
+        add_compile_options(-Wall -Wextra -pedantic)
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
         add_compile_options(/W4)
     endif()
@@ -28,7 +28,7 @@ if(NOT CLANG_TIDY_NOT_FOUND)
     message(STATUS "Clang-tidy found at ${CLANG_TIDY}")
     set(CMAKE_CXX_CLANG_TIDY ${CLANG_TIDY}
         --format-style=file
-        --checks=-*,modernize-*,bugprone-*,clang-analyzer-*,cppcoreguidelines-*,performance-*,portability-*,readibility-*,-cppcoreguidelines-owning-memory,-cppcoreguidelines-pro-type-reinterpret-cast,-cppcoreguidelines-pro-bounds-pointer-arithmetic,-cppcoreguidelines-no-malloc,-cppcoreguidelines-avoid-magic-numbers,-bugprone-sizeof-expression
+        --checks=-*,modernize-*,bugprone-*,clang-analyzer-*,cppcoreguidelines-*,performance-*,portability-*,readibility-*,-cppcoreguidelines-owning-memory,-cppcoreguidelines-pro-type-reinterpret-cast,-cppcoreguidelines-pro-bounds-pointer-arithmetic,-cppcoreguidelines-no-malloc,-cppcoreguidelines-avoid-magic-numbers,-bugprone-sizeof-expression,-performance-avoid-endl
         --header-filter=allocator\.hpp
     )
 endif()
@@ -69,11 +69,9 @@ else()
     endif()
 endif()
 
-find_package(range-v3 CONFIG REQUIRED)
-find_package(mio      CONFIG REQUIRED)
+find_package(mio CONFIG REQUIRED)
 
 target_link_libraries(${PROJECT_NAME}
 PRIVATE
-    range-v3::range-v3 
     mio::mio
 )
