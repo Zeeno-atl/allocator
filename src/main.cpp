@@ -1,3 +1,4 @@
+#include <barrier>
 #include <chrono>
 #include <deque>
 #include <format>
@@ -9,10 +10,12 @@
 #include <memory>
 #include <ranges>
 #include <set>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
+#include "active_mutex.hpp"
 #include "block_adaptor.hpp"
 #include "mallocator.hpp"
 #include "mmf_allocator.hpp"
@@ -21,8 +24,44 @@
 
 #include "pretty_name.hpp"
 
-constexpr auto repeat(int n) {
-	return std::views::iota(0, n);
+constexpr auto repeat(std::size_t n) {
+	return std::views::iota(0UZ, n);
+}
+
+constexpr auto DEFAULT_REPETITIONS = 1'000'000;
+
+template<typename T>
+auto parallel_test(T& alloc, std::size_t repetitions = DEFAULT_REPETITIONS) -> std::chrono::microseconds {
+	const auto concurrency = 4 * std::thread::hardware_concurrency(); // Make sure there is a lot of contention, context switches and cache misses
+
+	std::barrier              b{concurrency};
+	std::vector<std::jthread> threads;
+
+	auto func = [=, &alloc, &b] {
+		std::vector<std::size_t*> v;
+
+		b.arrive_and_wait();
+		for ([[maybe_unused]] auto i : repeat(repetitions / concurrency)) {
+			auto p = alloc.allocate(1);
+			*p     = i;
+			v.push_back(p);
+		}
+		b.arrive_and_wait();
+		for (auto p : v) {
+			alloc.deallocate(p, 1);
+		}
+	};
+
+	auto start = std::chrono::high_resolution_clock::now();
+	for ([[maybe_unused]] auto i : repeat(concurrency)) {
+		threads.emplace_back(func);
+	}
+
+	for (auto& thread : threads) {
+		thread.join();
+	}
+	auto end = std::chrono::high_resolution_clock::now();
+	return std::chrono::duration_cast<std::chrono::microseconds>(end - start);
 }
 
 void mallocator() {
@@ -32,10 +71,10 @@ void mallocator() {
 	          << std::endl;
 	std::cout << std::format("{:=^80}", "- mallocator usage -") << std::endl;
 
-	allocator::mallocator<int> a;
+	allocator::mallocator<std::size_t> a;
 
 	std::cout << "Allocating 100 ints in a row" << std::endl;
-	std::vector<int*> v;
+	std::vector<std::size_t*> v;
 	for ([[maybe_unused]] auto i : repeat(100)) {
 		auto p = a.allocate(1);
 		v.push_back(p);
@@ -46,10 +85,15 @@ void mallocator() {
 
 	std::cout << "Using this allocator as a vector allocator. This will cause the allocator to allocate bigger and bigger space, as the vector grows."
 	          << std::endl;
-	std::vector<int, allocator::mallocator<int>> v2{a};
+	std::vector<std::size_t, allocator::mallocator<std::size_t>> v2{a};
 	for (auto i : repeat(100)) {
 		v2.push_back(i);
 	}
+
+	std::cout << std::format("{:=^80}", "- mallocator parallel test -") << std::endl;
+	std::cout << "Mallocator allocator is as thread-safe as its underlying malloc and free functions." << std::endl;
+	auto duration = parallel_test(a);
+	std::cout << std::format("{}", duration) << std::endl;
 	std::cout << std::format("{:=^80}", "=") << std::endl;
 }
 
@@ -63,9 +107,9 @@ void mmf_allocator() {
 	          << std::endl;
 	std::cout << std::format("{:=^80}", "- mmf_allocator usage -") << std::endl;
 
-	allocator::mmf_allocator<int> a{std::filesystem::current_path() / "mmf"};
+	allocator::mmf_allocator<std::size_t> a{std::filesystem::current_path() / "mmf"};
 	std::cout << "Allocating 10 ints in a row (creating 10 files)" << std::endl;
-	std::vector<int*> v;
+	std::vector<std::size_t*> v;
 	for ([[maybe_unused]] auto i : repeat(10)) {
 		auto p = a.allocate(1);
 		v.push_back(p);
@@ -76,10 +120,15 @@ void mmf_allocator() {
 
 	std::cout << "Using this allocator as a vector allocator. This will cause the allocator to allocate bigger and bigger space, as the vector grows."
 	          << std::endl;
-	std::vector<int, allocator::mmf_allocator<int>> v2{a};
+	std::vector<std::size_t, allocator::mmf_allocator<std::size_t>> v2{a};
 	for (auto i : repeat(100)) {
 		v2.push_back(i);
 	}
+
+	allocator::mmf_allocator<std::size_t, active_mutex> ap{std::filesystem::current_path() / "mmfp"};
+
+	std::cout << std::format("{:=^80}", "- mmf_allocator parallel test -") << std::endl;
+	std::cout << std::format("{}", parallel_test(ap, 1000)) << std::endl;
 	std::cout << std::format("{:=^80}", "=") << std::endl;
 }
 
@@ -94,10 +143,10 @@ void block_adaptor() {
 	    << std::endl;
 	std::cout << std::format("{:=^80}", "- block_adaptor usage -") << std::endl;
 
-	allocator::block_adaptor<int> a;
+	allocator::block_adaptor<std::size_t> a;
 
 	std::cout << "Allocating 100 ints in a row" << std::endl;
-	std::vector<int*> v;
+	std::vector<std::size_t*> v;
 	for ([[maybe_unused]] auto i : repeat(100)) {
 		auto p = a.allocate(1);
 		v.push_back(p);
@@ -107,6 +156,10 @@ void block_adaptor() {
 	}
 
 	std::cout << "This adaptor can not be used as a vector allocator, since you can only allocate individual elements." << std::endl;
+
+	std::cout << std::format("{:=^80}", "- block_adaptor parallel test -") << std::endl;
+	allocator::block_adaptor<std::size_t, 4UZ * 1024 * 1024, std::allocator, active_mutex> ap; // smaller block size, so more blocks are allocated for the test
+	std::cout << std::format("{}", parallel_test(ap)) << std::endl;
 	std::cout << std::format("{:=^80}", "=") << std::endl;
 }
 
@@ -120,10 +173,10 @@ void universal_block_adaptor() {
 	          << std::endl;
 	std::cout << std::format("{:=^80}", "- universal_block_adaptor usage -") << std::endl;
 
-	allocator::universal_block_adaptor<int> a;
+	allocator::universal_block_adaptor<std::size_t> a;
 
 	std::cout << "Allocating 100 ints in a row" << std::endl;
-	std::vector<int*> v;
+	std::vector<std::size_t*> v;
 	for ([[maybe_unused]] auto i : repeat(100)) {
 		auto p = a.allocate(1);
 		v.push_back(p);
@@ -146,6 +199,9 @@ void universal_block_adaptor() {
 	}
 
 	std::cout << "This adaptor can not be used as a vector allocator, since you can only allocate individual elements." << std::endl;
+	std::cout << std::format("{:=^80}", "- universal_block_adaptor parallel test -") << std::endl;
+	allocator::universal_block_adaptor<std::size_t, 8UZ, 4UZ * 1024 * 1024, std::allocator, active_mutex> ap;
+	std::cout << std::format("{}", parallel_test(ap)) << std::endl;
 	std::cout << std::format("{:=^80}", "=") << std::endl;
 }
 
@@ -156,11 +212,11 @@ void round_robin_adaptor() {
 	          << std::endl;
 	std::cout << std::format("{:=^80}", "- round_robin_adaptor usage -") << std::endl;
 
-	using Alloc = allocator::round_robin_adaptor<int, allocator::mallocator<int>, std::allocator<int>>;
-	Alloc a{allocator::mallocator<int>{}, std::allocator<int>{}};
+	using Alloc = allocator::round_robin_adaptor<std::size_t, active_mutex, allocator::mallocator<std::size_t>, allocator::mallocator<std::size_t>>;
+	Alloc a{allocator::mallocator<std::size_t>{}, allocator::mallocator<std::size_t>{}};
 
 	std::cout << "Allocating 100 ints in a row, alternating between mallocator and std::allocator" << std::endl;
-	std::vector<int*> v;
+	std::vector<std::size_t*> v;
 	for ([[maybe_unused]] auto i : repeat(100)) {
 		auto p = a.allocate(1);
 		v.push_back(p);
@@ -173,10 +229,12 @@ void round_robin_adaptor() {
 	    << "This adaptor inherits the limitations of individual allocators. In the case of using it with std::allocator and allocator::mallocator, it can "
 	       "be used as vector allocator."
 	    << std::endl;
-	std::vector<int, Alloc> v2{a};
+	std::vector<std::size_t, Alloc> v2{a};
 	for (auto i : repeat(100)) {
 		v2.push_back(i);
 	}
+	std::cout << std::format("{:=^80}", "- round_robin_adaptor parallel test -") << std::endl;
+	std::cout << std::format("{}", parallel_test(a)) << std::endl;
 	std::cout << std::format("{:=^80}", "=") << std::endl;
 }
 
@@ -190,16 +248,16 @@ void ultimate_infinite_capacity_speed() {
 	             "SSDs. We did just that, but the solution was much more complex than simply creating allocator in this modular way."
 	          << std::endl;
 
-	using DiskAllocator = allocator::block_adaptor<int, 4 * 1024 * 1024, allocator::mmf_allocator>;
-	using Alloc         = allocator::round_robin_adaptor<int, DiskAllocator, DiskAllocator, DiskAllocator, DiskAllocator>;
+	using DiskAllocator = allocator::block_adaptor<std::size_t, 4LL * 1024 * 1024, allocator::mmf_allocator>;
+	using Alloc         = allocator::round_robin_adaptor<std::size_t, dummy_mutex, DiskAllocator, DiskAllocator, DiskAllocator, DiskAllocator>;
 	Alloc
-	    a{DiskAllocator{allocator::mmf_allocator<int>{std::filesystem::current_path() / "mmf1"}},
-	      DiskAllocator{allocator::mmf_allocator<int>{std::filesystem::current_path() / "mmf2"}},
-	      DiskAllocator{allocator::mmf_allocator<int>{std::filesystem::current_path() / "mmf3"}},
-	      DiskAllocator{allocator::mmf_allocator<int>{std::filesystem::current_path() / "mmf4"}}};
+	    a{DiskAllocator{allocator::mmf_allocator<std::size_t>{std::filesystem::current_path() / "mmf1"}},
+	      DiskAllocator{allocator::mmf_allocator<std::size_t>{std::filesystem::current_path() / "mmf2"}},
+	      DiskAllocator{allocator::mmf_allocator<std::size_t>{std::filesystem::current_path() / "mmf3"}},
+	      DiskAllocator{allocator::mmf_allocator<std::size_t>{std::filesystem::current_path() / "mmf4"}}};
 
 	std::cout << "Allocating 100 ints in a row, alternating between 4 mmf_allocators wrapped in a block_adaptor" << std::endl;
-	std::vector<int*> v;
+	std::vector<std::size_t*> v;
 	for ([[maybe_unused]] auto i : repeat(100)) {
 		auto p = a.allocate(1);
 		v.push_back(p);

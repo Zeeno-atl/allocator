@@ -1,16 +1,17 @@
 #pragma once
 
+#include "dummy_mutex.hpp"
 #include <array>
 #include <atomic>
 #include <charconv>
 #include <filesystem>
 #include <fstream>
+#include <mio/mmap.hpp>
+#include <mutex>
 #include <stdexcept>
 #include <string_view>
 #include <system_error>
 #include <unordered_map>
-
-#include <mio/mmap.hpp>
 
 namespace allocator {
 
@@ -21,9 +22,9 @@ namespace allocator {
  * It is quite heavy allocator, so you should do as big allocations as possible.
  */
 
-template<class T>
+template<class T, typename Mutex = dummy_mutex>
 struct mmf_allocator {
-	template<typename>
+	template<typename, typename>
 	friend struct mmf_allocator;
 
 	using value_type = T;
@@ -38,8 +39,8 @@ struct mmf_allocator {
 	auto operator=(const mmf_allocator&) -> mmf_allocator& = default;
 	auto operator=(mmf_allocator&&) -> mmf_allocator&      = default;
 
-	template<class U>
-	constexpr mmf_allocator(const mmf_allocator<U>& other) noexcept : _p{*reinterpret_cast<const decltype(_p)*>(&other._p)} {
+	template<typename U>
+	constexpr mmf_allocator(const mmf_allocator<U, Mutex>& other) noexcept : _p{*reinterpret_cast<const decltype(_p)*>(&other._p)} {
 	}
 
 	[[nodiscard]] auto allocate(std::size_t n) -> value_type* {
@@ -48,6 +49,7 @@ struct mmf_allocator {
 		}
 
 		std::filesystem::path filename;
+		// No need to lock here, because we do not change _p->_directory and it is safe to read it without lock
 		if (_p->_directory.empty()) {
 			filename = std::tmpnam(nullptr);
 		} else {
@@ -68,19 +70,27 @@ struct mmf_allocator {
 		}
 
 		auto data = reinterpret_cast<value_type*>(mapping.data());
-		_p->_mappings.emplace(data, MappingItem{filename, std::move(mapping)});
+		{
+			std::scoped_lock lock{_p->_mutex};
+			_p->_mappings.emplace(data, MappingItem{filename, std::move(mapping)});
+		}
 
 		return data;
 	}
 
 	void deallocate(value_type* p, [[maybe_unused]] std::size_t n) noexcept {
-		auto it = _p->_mappings.find(p);
-		if (it == _p->_mappings.end()) {
-			return;
+		std::filesystem::path filename;
+		{
+			std::scoped_lock lock{_p->_mutex};
+			auto             it = _p->_mappings.find(p);
+			if (it == _p->_mappings.end()) {
+				return;
+			}
+			it->second.mapping.unmap();
+			filename = std::move(it->second.filename);
+			_p->_mappings.erase(p);
 		}
-		it->second.mapping.unmap();
-		std::filesystem::remove(it->second.filename);
-		_p->_mappings.erase(p);
+		std::filesystem::remove(filename);
 	}
 
 private:
@@ -108,8 +118,9 @@ private:
 		std::atomic_uint_least32_t                   _nextId{0};
 		std::filesystem::path                        _directory;
 		std::unordered_map<value_type*, MappingItem> _mappings;
+		Mutex                                        _mutex;
 
-		ControlBlock(std::filesystem::path dir) : _directory{std::move(dir)} {
+		explicit ControlBlock(std::filesystem::path dir) : _directory{std::move(dir)} {
 			if (!_directory.empty() && !std::filesystem::exists(_directory)) {
 				std::filesystem::create_directories(_directory);
 			}

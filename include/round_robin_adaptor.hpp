@@ -1,11 +1,13 @@
 #pragma once
 
+#include "dummy_mutex.hpp"
 #include <atomic>
+#include <mutex>
 #include <unordered_map>
 
 namespace allocator {
 
-template<typename T, typename... Allocs>
+template<typename T, typename Mutex = dummy_mutex, typename... Allocs>
 class round_robin_adaptor {
 public:
 	using value_type = T;
@@ -25,9 +27,13 @@ public:
 	}
 
 	void deallocate(value_type* p, std::size_t n) {
-		auto it = _p->allocations.find(p);
-		if (it == _p->allocations.end()) {
-			throw std::invalid_argument{"Pointer was not allocated by this allocator"};
+		decltype(_p->allocations.find(p)) it;
+		{
+			std::scoped_lock lock{_p->mutex};
+			it = _p->allocations.find(p);
+			if (it == _p->allocations.end()) {
+				throw std::invalid_argument{"Pointer was not allocated by this allocator"};
+			}
 		}
 
 		deallocateImpl(it->second, p, n);
@@ -45,7 +51,10 @@ private:
 		} else {
 			if (Index == allocNo) {
 				std::get<Index>(_p->allocs).deallocate(p, n);
-				_p->allocations.erase(p);
+				{
+					std::scoped_lock lock{_p->mutex};
+					_p->allocations.erase(p);
+				}
 			} else {
 				deallocateImpl<Index + 1>(allocNo, p, n);
 			}
@@ -58,8 +67,11 @@ private:
 			throw std::out_of_range{"Index out of range"};
 		} else {
 			if (Index == allocNo) {
-				auto ptr             = std::get<Index>(_p->allocs).allocate(n);
-				_p->allocations[ptr] = Index;
+				auto ptr = std::get<Index>(_p->allocs).allocate(n);
+				{
+					std::scoped_lock lock{_p->mutex};
+					_p->allocations[ptr] = Index;
+				}
 				return ptr;
 			} else {
 				return allocateImpl<Index + 1>(allocNo, n);
@@ -72,6 +84,7 @@ private:
 		std::tuple<Allocs...>                        allocs;
 		std::atomic_uint_least32_t                   next{0};
 		std::unordered_map<value_type*, std::size_t> allocations;
+		Mutex                                        mutex;
 
 		ControlBlock(Allocs&&... allocs) : allocs{allocs...} {
 		}

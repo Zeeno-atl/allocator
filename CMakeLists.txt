@@ -52,8 +52,8 @@ target_sources(${PROJECT_NAME}
 )
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    target_compile_options(${PROJECT_NAME} PRIVATE -stdlib=libc++)
-    target_link_options(${PROJECT_NAME} PRIVATE -stdlib=libc++)
+    target_compile_options(${PROJECT_NAME} PRIVATE -stdlib=libstdc++)
+    target_link_options(${PROJECT_NAME} PRIVATE -stdlib=libstdc++)
 endif()
 
 # static link for the release build
@@ -61,8 +61,11 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
     target_link_options(${PROJECT_NAME} PRIVATE)
 else()
     if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-        target_compile_options(${PROJECT_NAME} PRIVATE -fno-omit-frame-pointer -fsanitize=address -fsanitize=leak)
-        target_link_options(${PROJECT_NAME} PRIVATE -fno-omit-frame-pointer -fsanitize=address -fsanitize=leak)
+    # -fsanitize=address -fsanitize=leak
+    # -fsanitize=memory
+    # -fsanitize=thread
+        target_compile_options(${PROJECT_NAME} PRIVATE -fno-omit-frame-pointer -fsanitize=undefined -fsanitize=address)
+        target_link_options(${PROJECT_NAME} PRIVATE -fno-omit-frame-pointer -fsanitize=undefined -fsanitize=address)
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
         target_compile_options(${PROJECT_NAME} PRIVATE /fsanitize=address /analyze /analyze:external-)
         target_link_options(${PROJECT_NAME} PRIVATE /fsanitize=address /analyze /analyze:external-)

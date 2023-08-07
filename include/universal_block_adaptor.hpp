@@ -6,6 +6,9 @@
 #include <cstddef>
 #include <memory>
 
+#include "block_adaptor.hpp"
+#include "dummy_mutex.hpp"
+
 namespace allocator {
 
 /*
@@ -15,9 +18,14 @@ namespace allocator {
 	It starts with objects of size sizeof(void*) bytes (8B on 64-bit systems) and doubles the size
 	until it reaches the number of blocks specified in the template parameter.
 */
-template<typename T = std::byte, std::size_t SUBALLOCATORS = 6, std::size_t BLOCK_SIZE = 4 * 1024 * 1024, template<typename...> typename Alloc = std::allocator>
+template<
+    typename T                           = std::byte,
+    std::size_t SUBALLOCATORS            = 6UZ,
+    std::size_t BLOCK_SIZE               = 4UZ * 1024 * 1024,
+    template<typename...> typename Alloc = std::allocator,
+    typename Mutex                       = dummy_mutex>
 struct universal_block_adaptor {
-	template<typename, std::size_t, std::size_t, template<typename...> typename>
+	template<typename, std::size_t, std::size_t, template<typename...> typename, typename>
 	friend struct universal_block_adaptor;
 
 	using value_type = T;
@@ -80,17 +88,17 @@ private:
 	}
 
 	template<typename U>
-	using filler_allocator_type = block_adaptor<Filler<cellSize(sizeof(U))>, BLOCK_SIZE, Alloc>;
+	using filler_allocator_type = block_adaptor<Filler<cellSize(sizeof(U))>, BLOCK_SIZE, Alloc, Mutex>;
 
 	template<typename U>
-	auto allocator() -> block_adaptor<U, BLOCK_SIZE, Alloc>& {
+	auto allocator() -> block_adaptor<U, BLOCK_SIZE, Alloc, Mutex>& {
 		static_assert(posForType<U>() < SUBALLOCATORS, "type too big for a allocator");
-		return *reinterpret_cast<block_adaptor<U, BLOCK_SIZE, Alloc>*>(&std::get<posForType<U>()>(*_alloc));
+		return *reinterpret_cast<block_adaptor<U, BLOCK_SIZE, Alloc, Mutex>*>(&std::get<posForType<U>()>(*_alloc));
 	}
 
 	template<std::size_t... Index>
 	static auto helper(std::index_sequence<Index...>) {
-		return std::tuple<block_adaptor<Filler<cellSize(1 << (std::bit_width(sizeof(void*)) + Index - 1))>, BLOCK_SIZE, Alloc>...>{};
+		return std::tuple<block_adaptor<Filler<cellSize(1 << (std::bit_width(sizeof(void*)) + Index - 1))>, BLOCK_SIZE, Alloc, Mutex>...>{};
 	}
 
 	using allocator_tuple_type = decltype(helper(std::make_index_sequence<SUBALLOCATORS>{}));
